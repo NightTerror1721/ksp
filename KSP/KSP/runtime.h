@@ -21,13 +21,13 @@ namespace ksp
 	struct CallInfo
 	{
 		stack_ptr_t top;
-		stack_ptr_t temps_base;
-		stack_ptr_t locals_base;
-		stack_ptr_t varargs_base;
+		stack_ptr_t heap_base;
+		reg_ptr_t temps_base;
+		reg_ptr_t locals_base;
+		reg_ptr_t varargs_base;
 		stack_ptr_t bottom;
 
 		bytecode_t saved_pc;
-		temp_ptr_t saved_temps_ptr;
 
 		CallInfo* prev;
 
@@ -44,8 +44,7 @@ namespace ksp
 		stack_ptr_t data;
 		size_t data_size;
 
-		temp_ptr_t stack_ptr;
-		stack_ptr_t ret_ptr;
+		reg_t rret;
 		bytecode_t pc;
 
 		RuntimeState(
@@ -53,7 +52,7 @@ namespace ksp
 			const size_t data_stack_size = __KSP_DEFAULT_DATA_STACK_SIZE);
 		~RuntimeState();
 
-		void push_call_info(const size_t locals, const size_t temps, const size_t var_args);
+		void push_call_info(const size_t locals, const size_t temps, const size_t var_args, const size_t heap_size);
 	};
 
 

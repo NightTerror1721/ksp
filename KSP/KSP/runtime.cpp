@@ -19,7 +19,9 @@ ksp::RuntimeState::RuntimeState(
 	ci{ nullptr },
 	calls_size{ calls_stack_size },
 	data{ reinterpret_cast<stack_ptr_t>(std::malloc(data_stack_size * sizeof(stack_ptr_t))) },
-	data_size{ data_stack_size }
+	data_size{ data_stack_size },
+	pc{},
+	rret{}
 {}
 ksp::RuntimeState::~RuntimeState()
 {
@@ -27,7 +29,7 @@ ksp::RuntimeState::~RuntimeState()
 	std::free(data);
 }
 
-void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, const size_t var_args)
+void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, const size_t var_args, const size_t heap_size)
 {
 	CallInfo* info;
 	if (!ci)
@@ -39,14 +41,15 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 	else
 	{
 		info = ci + 1;
-		info->bottom = ci->top + 1;
+		info->bottom = ci->top;
 		info->prev = ci;
 	}
 	
-	info->locals_base = info->bottom + var_args;
+	info->varargs_base = reinterpret_cast<reg_ptr_t>(info->bottom);
+	info->locals_base = info->varargs_base + var_args;
 	info->temps_base = info->locals_base + locals;
-	info->top = info->temps_base + temps;
-	info->saved_temps_ptr = stack_ptr;
+	info->heap_base = reinterpret_cast<stack_ptr_t>(info->temps_base + temps);
+	info->top = info->heap_base + heap_size;
 	info->saved_pc = pc;
 	ci = info;
 }
@@ -55,12 +58,11 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 
 
 #define STACK __stack
-#define STACK_PTR STACK.stack_ptr
-#define RET_PTR STACK.ret_ptr
+#define RET_REG STACK.rret
 #define CI STACK.ci
 #define PC STACK.pc
 #define DECL_STACK RuntimeState STACK
-#define STACK_PUSH_CALL_INFO(locals, temps, var_args) STACK.push_call_info((locals), (temps), (var_args))
+#define STACK_PUSH_CALL_INFO(locals, temps, var_args, heap_size) STACK.push_call_info((locals), (temps), (var_args), (heap_size))
 
 #define PC_SET(instruction) PC = (instruction)
 #define PC_SHIFT(amount) PC += (amount)
@@ -73,14 +75,26 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 
 #define BYTE uint8_t
 #define WORD uint16_t
-#define DWORD uint32_t
-#define QWORD uint64_t
+#define LONG uint32_t
+#define QUAD uint64_t
+#define PTR ptr_t
 
 #define __PC_GET_DATA(offset, type) (*reinterpret_cast<type*>((PC) + (offset)))
 #define PC_GET_BYTE(offset) __PC_GET_DATA(offset, BYTE)
 #define PC_GET_WORD(offset) __PC_GET_DATA(offset, WORD)
-#define PC_GET_DWORD(offset) __PC_GET_DATA(offset, DWORD)
-#define PC_GET_QWORD(offset) __PC_GET_DATA(offset, QWORD)
+#define PC_GET_LONG(offset) __PC_GET_DATA(offset, LONG)
+#define PC_GET_QUAD(offset) __PC_GET_DATA(offset, QUAD)
+
+#define REG(section, offset) (CI->section[(offset)])
+#define REG_PTR(section, offset) (CI->section + (offset))
+
+#define VARARG_REG(offset, type) REG(varargs_base, offset)
+#define LOCAL_REG(offset, type) REG(locals_base, offset)
+#define TEMP_REG(offset, type) REG(temps_base, offset)
+
+#define VARARG_REG_PTR(offset, type) REG_PTR(varargs_base, offset)
+#define LOCAL_REG_PTR(offset, type) REG_PTR(locals_base, offset)
+#define TEMP_REG_PTR(offset, type) REG_PTR(temps_base, offset)
 
 #define GET_LOCAL_PTR(offset) (CI->locals_base + (offset))
 
@@ -99,9 +113,6 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 #define SET_LOCAL_WORD(offset, value) GET_LOCAL_WORD(offset) = (value)
 #define SET_LOCAL_DWORD(offset, value) GET_LOCAL_DWORD(offset) = (value)
 #define SET_LOCAL_QWORD(offset, value) GET_LOCAL_QWORD(offset) = (value)
-
-#define STACK_PUSH(ptr) (*(STACK_PTR++)) = (ptr)
-#define STACK_POP() (*(--STACK_PTR))
 
 #define __READ_MEM(ptr, type) (*reinterpret_cast<type*>(ptr))
 #define READ_BYTE_MEM(ptr) __READ_MEM(ptr, BYTE)
@@ -122,7 +133,7 @@ void ksp::execute(KSP_State* ksp_state, KSP_Module* module, const RunnableByteco
 	DECL_STACK;
 	PC_SET(code.code);
 
-	STACK_PUSH_CALL_INFO(0, 0, 0);
+	STACK_PUSH_CALL_INFO(0, 0, 0, 0);
 
 	for (;; PC_SHIFT(1))
 	{
