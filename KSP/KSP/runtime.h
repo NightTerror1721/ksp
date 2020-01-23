@@ -22,9 +22,7 @@ namespace ksp
 	{
 		stack_ptr_t top;
 		stack_ptr_t heap_base;
-		reg_ptr_t temps_base;
-		reg_ptr_t locals_base;
-		reg_ptr_t varargs_base;
+		reg_ptr_t regs_base;
 		stack_ptr_t bottom;
 
 		bytecode_t saved_pc;
@@ -52,10 +50,12 @@ namespace ksp
 			const size_t data_stack_size = __KSP_DEFAULT_DATA_STACK_SIZE);
 		~RuntimeState();
 
-		void push_call_info(const size_t locals, const size_t temps, const size_t var_args, const size_t heap_size);
+		void print_current_callinfo_registers() const;
+
+		void push_call_info(const uint8_t register_count, const size_t heap_size);
 	};
 
 
 
-	void execute(KSP_State* kstate, KSP_Module* module, const bytecode::RunnableBytecode& code);
+	void execute(KSP_State* ksp_state, KSP_Module* module, const bytecode::RunnableBytecode& code);
 }

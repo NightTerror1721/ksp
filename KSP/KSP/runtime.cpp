@@ -1,6 +1,7 @@
 #include "runtime.h"
 
 #include <cstdlib>
+#include <iostream>
 
 #include "vm.h"
 #include "ops.h"
@@ -29,7 +30,19 @@ ksp::RuntimeState::~RuntimeState()
 	std::free(data);
 }
 
-void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, const size_t var_args, const size_t heap_size)
+void ksp::RuntimeState::print_current_callinfo_registers() const
+{
+	if (ci)
+	{
+		size_t count = (reinterpret_cast<char*>(ci->heap_base) - reinterpret_cast<char*>(ci->regs_base)) / sizeof(reg_t);
+		reg_ptr_t ptr = ci->regs_base;
+		int idx = 0;
+		while ((count--) > 0)
+			std::cout << "reg" << (idx++) << " = " << *(ptr++) << std::endl;
+	}
+}
+
+void ksp::RuntimeState::push_call_info(const uint8_t register_count, const size_t heap_size)
 {
 	CallInfo* info;
 	if (!ci)
@@ -45,10 +58,8 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 		info->prev = ci;
 	}
 	
-	info->varargs_base = reinterpret_cast<reg_ptr_t>(info->bottom);
-	info->locals_base = info->varargs_base + var_args;
-	info->temps_base = info->locals_base + locals;
-	info->heap_base = reinterpret_cast<stack_ptr_t>(info->temps_base + temps);
+	info->regs_base = reinterpret_cast<reg_ptr_t>(info->bottom);
+	info->heap_base = reinterpret_cast<stack_ptr_t>(info->regs_base + register_count);
 	info->top = info->heap_base + heap_size;
 	info->saved_pc = pc;
 	ci = info;
@@ -62,7 +73,9 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 #define CI STACK.ci
 #define PC STACK.pc
 #define DECL_STACK RuntimeState STACK
-#define STACK_PUSH_CALL_INFO(locals, temps, var_args, heap_size) STACK.push_call_info((locals), (temps), (var_args), (heap_size))
+#define STACK_PUSH_CALL_INFO(regs_count, heap_size) STACK.push_call_info((regs_count), (heap_size))
+
+#define STACK_PRINT() STACK.print_current_callinfo_registers()
 
 #define PC_SET(instruction) PC = (instruction)
 #define PC_SHIFT(amount) PC += (amount)
@@ -79,61 +92,45 @@ void ksp::RuntimeState::push_call_info(const size_t locals, const size_t temps, 
 #define QUAD uint64_t
 #define PTR ptr_t
 
-#define __PC_GET_DATA(offset, type) (*reinterpret_cast<type*>((PC) + (offset)))
+#define AS_QUAD(value) ((0xffffffffffffffffULL) & (value))
+
+#define __PC_GET_DATA(offset, type) *reinterpret_cast<type*>(PC + (offset))
 #define PC_GET_BYTE(offset) __PC_GET_DATA(offset, BYTE)
 #define PC_GET_WORD(offset) __PC_GET_DATA(offset, WORD)
 #define PC_GET_LONG(offset) __PC_GET_DATA(offset, LONG)
 #define PC_GET_QUAD(offset) __PC_GET_DATA(offset, QUAD)
 
-#define REG(section, offset) (CI->section[(offset)])
-#define REG_PTR(section, offset) (CI->section + (offset))
+#define REG(offset) CI->regs_base[(offset)]
+#define REG_PTR(offset) CI->regs_base + (offset)
 
-#define VARARG_REG(offset, type) REG(varargs_base, offset)
-#define LOCAL_REG(offset, type) REG(locals_base, offset)
-#define TEMP_REG(offset, type) REG(temps_base, offset)
+#define REG_GET(offset, type) static_cast<type>(REG(offset))
+#define REG_SET(offset, value) REG(offset) = AS_QUAD(value)
 
-#define VARARG_REG_PTR(offset, type) REG_PTR(varargs_base, offset)
-#define LOCAL_REG_PTR(offset, type) REG_PTR(locals_base, offset)
-#define TEMP_REG_PTR(offset, type) REG_PTR(temps_base, offset)
-
-#define GET_LOCAL_PTR(offset) (CI->locals_base + (offset))
-
-#define __GET_LOCAL_DATA_PTR(offset, type) (reinterpret_cast<type*>(GET_LOCAL_PTR(offset)))
-#define GET_LOCAL_BYTE_PTR(offset) __GET_LOCAL_DATA_PTR(offset, BYTE)
-#define GET_LOCAL_WORD_PTR(offset) __GET_LOCAL_DATA_PTR(offset, WORD)
-#define GET_LOCAL_DWORD_PTR(offset) __GET_LOCAL_DATA_PTR(offset, DWORD)
-#define GET_LOCAL_QWORD_PTR(offset) __GET_LOCAL_DATA_PTR(offset, QWORD)
-
-#define GET_LOCAL_BYTE(offset) (*__GET_LOCAL_DATA_PTR(offset, BYTE))
-#define GET_LOCAL_WORD(offset) (*__GET_LOCAL_DATA_PTR(offset, WORD))
-#define GET_LOCAL_DWORD(offset) (*__GET_LOCAL_DATA_PTR(offset, DWORD))
-#define GET_LOCAL_QWORD(offset) (*__GET_LOCAL_DATA_PTR(offset, QWORD))
-
-#define SET_LOCAL_BYTE(offset, value) GET_LOCAL_BYTE(offset) = (value)
-#define SET_LOCAL_WORD(offset, value) GET_LOCAL_WORD(offset) = (value)
-#define SET_LOCAL_DWORD(offset, value) GET_LOCAL_DWORD(offset) = (value)
-#define SET_LOCAL_QWORD(offset, value) GET_LOCAL_QWORD(offset) = (value)
+#define REG_GET_BYTE(offset) REG_GET(offset, BYTE)
+#define REG_GET_WORD(offset) REG_GET(offset, WORD)
+#define REG_GET_LONG(offset) REG_GET(offset, LONG)
+#define REG_GET_QUAD(offset) REG(offset)
 
 #define __READ_MEM(ptr, type) (*reinterpret_cast<type*>(ptr))
 #define READ_BYTE_MEM(ptr) __READ_MEM(ptr, BYTE)
 #define READ_WORD_MEM(ptr) __READ_MEM(ptr, WORD)
-#define READ_DWORD_MEM(ptr) __READ_MEM(ptr, DWORD)
-#define READ_QWORD_MEM(ptr) __READ_MEM(ptr, QWORD)
+#define READ_LONG_MEM(ptr) __READ_MEM(ptr, LONG)
+#define READ_QUAD_MEM(ptr) __READ_MEM(ptr, QUAD)
 
 #define __WRITE_MEM(ptr, value, type) __READ_MEM(ptr, type) = (value)
 #define WRITE_BYTE_MEM(ptr, value) __WRITE_MEM(ptr, value, BYTE)
 #define WRITE_WORD_MEM(ptr, value) __WRITE_MEM(ptr, value, WORD)
-#define WRITE_DWORD_MEM(ptr, value) __WRITE_MEM(ptr, value, DWORD)
-#define WRITE_QWORD_MEM(ptr, value) __WRITE_MEM(ptr, value, QWORD)
+#define WRITE_LONG_MEM(ptr, value) __WRITE_MEM(ptr, value, LONG)
+#define WRITE_QUAD_MEM(ptr, value) __WRITE_MEM(ptr, value, QUAD)
 
 
 
-void ksp::execute(KSP_State* ksp_state, KSP_Module* module, const RunnableBytecode& code)
+void ksp::execute(KSP_State* ksp_state, KSP_Module* module, const bytecode::RunnableBytecode& code)
 {
 	DECL_STACK;
 	PC_SET(code.code);
 
-	STACK_PUSH_CALL_INFO(0, 0, 0, 0);
+	STACK_PUSH_CALL_INFO(2, 0);
 
 	for (;; PC_SHIFT(1))
 	{
@@ -144,40 +141,63 @@ void ksp::execute(KSP_State* ksp_state, KSP_Module* module, const RunnableByteco
 			vmcase(NOP) {
 			} vmbreak;
 
-			vmcase(LD_L) {
+			vmcase(PUTB) {
 
-				STACK_PUSH(GET_LOCAL_PTR(PC_GET_DWORD(1)));
+				REG_SET(PC_GET_BYTE(1), PC_GET_BYTE(2));
 
-				PC_SHIFT(4);
+				PC_SHIFT(2);
 			} vmbreak;
 
-			vmcase(ST8_L) {
+			vmcase(PUTW) {
 
-				SET_LOCAL_BYTE(PC_GET_DWORD(1), READ_BYTE_MEM(STACK_POP()));
+				REG_SET(PC_GET_BYTE(1), PC_GET_WORD(2));
 
-				PC_SHIFT(4);
+				PC_SHIFT(3);
 			} vmbreak;
 
-			vmcase(ST16_L) {
+			vmcase(PUTL) {
 
-				SET_LOCAL_WORD(PC_GET_DWORD(1), READ_WORD_MEM(STACK_POP()));
+				REG_SET(PC_GET_BYTE(1), PC_GET_LONG(2));
 
-				PC_SHIFT(4);
+				PC_SHIFT(5);
 			} vmbreak;
 
-			vmcase(ST32_L) {
+			vmcase(PUTQ) {
 
-				SET_LOCAL_DWORD(PC_GET_DWORD(1), READ_DWORD_MEM(STACK_POP()));
+				REG_SET(PC_GET_BYTE(1), PC_GET_QUAD(2));
 
-				PC_SHIFT(4);
+				PC_SHIFT(9);
 			} vmbreak;
 
-			vmcase(ST64_L) {
+			vmcase(MOVB) {
 
-				SET_LOCAL_QWORD(PC_GET_DWORD(1), READ_QWORD_MEM(STACK_POP()));
+				REG_SET(PC_GET_BYTE(2), REG_GET_BYTE(PC_GET_BYTE(1)));
 
-				PC_SHIFT(4);
+				PC_SHIFT(2);
+			} vmbreak;
+
+			vmcase(MOVW) {
+
+				REG_SET(PC_GET_BYTE(1), REG_GET_WORD(PC_GET_BYTE(2)));
+
+				PC_SHIFT(2);
+			} vmbreak;
+
+			vmcase(MOVL) {
+
+				REG_SET(PC_GET_BYTE(1), REG_GET_LONG(PC_GET_BYTE(2)));
+
+				PC_SHIFT(2);
+			} vmbreak;
+
+			vmcase(MOVQ) {
+
+				REG_SET(PC_GET_BYTE(1), REG_GET_QUAD(PC_GET_BYTE(2)));
+
+				PC_SHIFT(2);
 			} vmbreak;
 		}
+
+		STACK_PRINT();
 	}
 }

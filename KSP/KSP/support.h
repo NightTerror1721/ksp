@@ -11,4 +11,11 @@ namespace ksp
 
 	typedef uint8_t opcode_t;
 	typedef opcode_t* bytecode_t;
+
+
+
+	namespace support
+	{
+
+	}
 }
