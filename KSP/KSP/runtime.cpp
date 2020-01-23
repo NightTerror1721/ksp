@@ -100,16 +100,24 @@ void ksp::RuntimeState::push_call_info(const uint8_t register_count, const size_
 #define PC_GET_LONG(offset) __PC_GET_DATA(offset, LONG)
 #define PC_GET_QUAD(offset) __PC_GET_DATA(offset, QUAD)
 
-#define REG(offset) CI->regs_base[(offset)]
-#define REG_PTR(offset) CI->regs_base + (offset)
+#define __REG(offset) (CI->regs_base[(offset)])
+#define __REG_PTR(offset) (CI->regs_base + (offset))
 
-#define REG_GET(offset, type) static_cast<type>(REG(offset))
-#define REG_SET(offset, value) REG(offset) = AS_QUAD(value)
+#define __REG_GET(offset, type) (static_cast<type>(__REG(offset)))
+#define __REG_SET(offset, value) (__REG(offset) = (value))
 
-#define REG_GET_BYTE(offset) REG_GET(offset, BYTE)
-#define REG_GET_WORD(offset) REG_GET(offset, WORD)
-#define REG_GET_LONG(offset) REG_GET(offset, LONG)
-#define REG_GET_QUAD(offset) REG(offset)
+#define REG_GET_BYTE(offset) __REG_GET(offset, BYTE)
+#define REG_GET_WORD(offset) __REG_GET(offset, WORD)
+#define REG_GET_LONG(offset) __REG(offset)
+#define REG_GET_QUAD(offset) (*reinterpret_cast<QUAD*>(__REG_PTR(offset)))
+
+#define REG_SET_BYTE(offset, value) __REG_SET(offset, (value) & 0xffU)
+#define REG_SET_WORD(offset, value) __REG_SET(offset, (value) & 0xffffU)
+#define REG_SET_LONG(offset, value) __REG_SET(offset, value)
+#define REG_SET_QUAD(offset, value) (*reinterpret_cast<QUAD*>(__REG_PTR(offset)) = (value))
+
+#define REG_GET_PTR(offset) (*reinterpret_cast<PTR*>(__REG_PTR(offset)))
+#define REG_SET_PTR(offset, value) (*reinterpret_cast<PTR*>(__REG_PTR(offset)) = (value))
 
 #define __READ_MEM(ptr, type) (*reinterpret_cast<type*>(ptr))
 #define READ_BYTE_MEM(ptr) __READ_MEM(ptr, BYTE)
@@ -143,56 +151,56 @@ void ksp::execute(KSP_State* ksp_state, KSP_Module* module, const bytecode::Runn
 
 			vmcase(PUTB) {
 
-				REG_SET(PC_GET_BYTE(1), PC_GET_BYTE(2));
+				REG_SET_BYTE(PC_GET_BYTE(1), PC_GET_BYTE(2));
 
 				PC_SHIFT(2);
 			} vmbreak;
 
 			vmcase(PUTW) {
 
-				REG_SET(PC_GET_BYTE(1), PC_GET_WORD(2));
+				REG_SET_WORD(PC_GET_BYTE(1), PC_GET_WORD(2));
 
 				PC_SHIFT(3);
 			} vmbreak;
 
 			vmcase(PUTL) {
 
-				REG_SET(PC_GET_BYTE(1), PC_GET_LONG(2));
+				REG_SET_LONG(PC_GET_BYTE(1), PC_GET_LONG(2));
 
 				PC_SHIFT(5);
 			} vmbreak;
 
 			vmcase(PUTQ) {
 
-				REG_SET(PC_GET_BYTE(1), PC_GET_QUAD(2));
+				REG_SET_QUAD(PC_GET_BYTE(1), PC_GET_QUAD(2));
 
 				PC_SHIFT(9);
 			} vmbreak;
 
 			vmcase(MOVB) {
 
-				REG_SET(PC_GET_BYTE(2), REG_GET_BYTE(PC_GET_BYTE(1)));
+				REG_SET_BYTE(PC_GET_BYTE(2), REG_GET_BYTE(PC_GET_BYTE(1)));
 
 				PC_SHIFT(2);
 			} vmbreak;
 
 			vmcase(MOVW) {
 
-				REG_SET(PC_GET_BYTE(1), REG_GET_WORD(PC_GET_BYTE(2)));
+				REG_SET_WORD(PC_GET_BYTE(1), REG_GET_WORD(PC_GET_BYTE(2)));
 
 				PC_SHIFT(2);
 			} vmbreak;
 
 			vmcase(MOVL) {
 
-				REG_SET(PC_GET_BYTE(1), REG_GET_LONG(PC_GET_BYTE(2)));
+				REG_SET_LONG(PC_GET_BYTE(1), REG_GET_LONG(PC_GET_BYTE(2)));
 
 				PC_SHIFT(2);
 			} vmbreak;
 
 			vmcase(MOVQ) {
 
-				REG_SET(PC_GET_BYTE(1), REG_GET_QUAD(PC_GET_BYTE(2)));
+				REG_SET_QUAD(PC_GET_BYTE(1), REG_GET_QUAD(PC_GET_BYTE(2)));
 
 				PC_SHIFT(2);
 			} vmbreak;
