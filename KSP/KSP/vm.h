@@ -7,6 +7,15 @@
 
 namespace ksp
 {
+	namespace module_info
+	{
+		struct ConstantPool
+		{
+			size_t count;
+			ptr_t data;
+		};
+	}
+
 	struct KSP_Module
 	{
 
