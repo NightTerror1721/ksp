@@ -2,10 +2,24 @@
 
 ksp::Type::Type(const Typekind kind, const size_t size) :
 	_kind{ kind },
-	_size{ size }
+	_size{ size },
+	_ptrForm{ nullptr }
 {}
 
-const ksp::Type& ksp::Type::component_type() const { return Invalid; }
+ksp::Type::~Type()
+{
+	if (_ptrForm)
+		delete _ptrForm;
+}
+
+const ksp::Type& ksp::Type::pointer()
+{
+	if (!_ptrForm)
+		_ptrForm = new PointerType(*this);
+	return *_ptrForm;
+}
+
+const ksp::Type& ksp::Type::componentType() const { return Invalid; }
 
 
 const ksp::Type& ksp::Type::Invalid = ksp::InvalidType::Invalid;
@@ -51,3 +65,17 @@ const ksp::ScalarType ksp::ScalarType::UInteger{ ksp::Typekind::UInteger, sizeof
 const ksp::ScalarType ksp::ScalarType::ULong{ ksp::Typekind::ULong, sizeof(uint64_t) };
 const ksp::ScalarType ksp::ScalarType::Boolean{ ksp::Typekind::Boolean, sizeof(char) };
 const ksp::ScalarType ksp::ScalarType::Character{ ksp::Typekind::Byte, sizeof(char16_t) };
+
+
+
+ksp::PointerType::PointerType(const Type& component_type) :
+	Type{ ksp::Typekind::Pointer, sizeof(void*) },
+	_componentType{ component_type }
+{}
+
+ksp::PointerType::~PointerType() {}
+
+const ksp::Type& ksp::PointerType::componentType() const { return _componentType; }
+
+bool ksp::PointerType::operator== (const Type& type) const { return ksp::is_pointer(type._kind) && _componentType == type.componentType(); }
+bool ksp::PointerType::operator!= (const Type& type) const { return !ksp::is_pointer(type._kind) || _componentType != type.componentType(); }

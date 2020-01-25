@@ -78,7 +78,12 @@ namespace ksp
 		Typekind _kind;
 		size_t _size;
 
+		PointerType* _ptrForm;
+
 		Type(const Typekind kind, const size_t size);
+		Type(const Type&) = delete;
+
+		Type& operator= (const Type&) = delete;
 
 	public:
 		struct Field
@@ -87,14 +92,16 @@ namespace ksp
 			std::string identifier;
 		};
 
-		virtual ~Type() {}
+		virtual ~Type();
 
 		inline bool isInvalid() const { return !static_cast<int>(_kind); }
 
 		inline Typekind kind() const { return _kind; }
 		inline size_t size() const { return _size; }
 
-		virtual const Type& component_type() const;
+		const Type& pointer();
+
+		virtual const Type& componentType() const;
 
 		inline operator bool() const { return static_cast<int>(_kind); }
 		inline bool operator! () const { return !static_cast<int>(_kind); }
@@ -120,6 +127,7 @@ namespace ksp
 		static const Type& ULong;
 		static const Type& Boolean;
 		static const Type& Character;
+
 	};
 
 	namespace
@@ -166,12 +174,40 @@ namespace ksp
 		};
 
 
-		/*class PointerType : public Type
+		class PointerType : public Type
 		{
 		private:
 			const Type& _componentType;
 
-			PointerType(const Type* component_type);
-		};*/
+			PointerType(const Type& component_type);
+
+		public:
+			friend class Type;
+
+			virtual ~PointerType();
+
+			const Type& componentType() const override;
+
+			bool operator== (const Type& type) const override;
+			bool operator!= (const Type& type) const override;
+		};
+
+
+		class ArrayType : public Type
+		{
+		private:
+			const Type& _componentType;
+			const size_t _count;
+
+			ArrayType(const Type& component_type);
+
+		public:
+			friend class Type;
+
+			const Type& componentType() const override;
+
+			bool operator== (const Type& type) const override;
+			bool operator!= (const Type& type) const override;
+		};
 	} 
 }
