@@ -2,6 +2,7 @@
 
 #include <cinttypes>
 #include <string>
+#include <vector>
 
 namespace ksp
 {
@@ -30,22 +31,24 @@ namespace ksp
 		Struct = 0x1 << 12
 	};
 
+#define __TPKIND_SCALAR_MASK ( \
+	static_cast<int>(Typekind::Byte) | \
+	static_cast<int>(Typekind::Short) | \
+	static_cast<int>(Typekind::Integer) | \
+	static_cast<int>(Typekind::Long) | \
+	static_cast<int>(Typekind::UByte) | \
+	static_cast<int>(Typekind::UShort) | \
+	static_cast<int>(Typekind::UInteger) | \
+	static_cast<int>(Typekind::ULong) | \
+	static_cast<int>(Typekind::Boolean) | \
+	static_cast<int>(Typekind::Character) \
+)
+
 	constexpr bool is_invalid(const Typekind kind) { return !static_cast<int>(kind); }
 
 	constexpr bool is_scalar(const Typekind kind)
 	{
-		return (static_cast<int>(kind) & (
-			static_cast<int>(Typekind::Byte) |
-			static_cast<int>(Typekind::Short) |
-			static_cast<int>(Typekind::Integer) |
-			static_cast<int>(Typekind::Long) |
-			static_cast<int>(Typekind::UByte) |
-			static_cast<int>(Typekind::UShort) |
-			static_cast<int>(Typekind::UInteger) |
-			static_cast<int>(Typekind::ULong) |
-			static_cast<int>(Typekind::Boolean) |
-			static_cast<int>(Typekind::Character)
-		)) != 0;
+		return (static_cast<int>(kind) & __TPKIND_SCALAR_MASK) != 0;
 	}
 
 	constexpr bool is_pointer(const Typekind kind)
@@ -63,14 +66,6 @@ namespace ksp
 		return (static_cast<int>(kind) & (static_cast<int>(Typekind::Struct))) != 0;
 	}
 
-	namespace
-	{
-		class InvalidType;
-		class ScalarType;
-		class PointerType;
-		class ArrayType;
-		class StructType;
-	}
 
 	class Type
 	{
@@ -78,61 +73,185 @@ namespace ksp
 		Typekind _kind;
 		size_t _size;
 
-		PointerType* _ptrForm;
+		union _Extra
+		{
+			// Pointer //
+			struct
+			{
+				Type* _componentType;
+			};
+
+			// Array //
+			struct
+			{
+				Type* _componentType;
+				size_t _elementCount;
+			};
+
+			_Extra() = default;
+			_Extra(const _Extra& ex)
+			{
+				_copy(ex);
+			}
+			_Extra(_Extra&& ex) noexcept
+			{
+				operator=(std::move(ex));
+			}
+			~_Extra() { destroy(); }
+
+			_Extra& operator= (const _Extra& ex)
+			{
+				destroy();
+				_copy(ex);
+				return *this;
+			}
+			_Extra& operator= (_Extra&& ex) noexcept
+			{
+				_componentType = std::move(ex._componentType);
+				ex._componentType = nullptr;
+				return *this;
+			}
+
+			void destroy()
+			{
+				if (_componentType)
+					delete _componentType;
+
+				std::memset(this, 0, sizeof(_Extra));
+			}
+
+		private:
+			void _copy(const _Extra& ex)
+			{
+				if (ex._componentType)
+					_componentType = new Type{ ex._componentType };
+				_elementCount = ex._elementCount;
+			}
+			
+		} _extra;
 
 		Type(const Typekind kind, const size_t size);
-		Type(const Type&) = delete;
 
-		Type& operator= (const Type&) = delete;
+		bool _equals(const Type& type) const;
 
 	public:
-		struct Field
-		{
-			const Type& type;
-			std::string identifier;
-		};
+		Type(const Type& type);
+		explicit inline Type(const Type* type) : Type{ *type } {}
+		Type(Type&& type) noexcept;
+		~Type();
 
-		virtual ~Type();
-
-		inline bool isInvalid() const { return !static_cast<int>(_kind); }
+		Type& operator= (const Type& type);
+		Type& operator= (Type&& type) noexcept;
 
 		inline Typekind kind() const { return _kind; }
 		inline size_t size() const { return _size; }
 
-		const Type& pointer();
+		inline const Type* componentType() const { return _extra._componentType; }
 
-		virtual const Type& componentType() const;
+		inline size_t arrayElementCount() const { return _extra._elementCount; }
 
-		inline operator bool() const { return static_cast<int>(_kind); }
-		inline bool operator! () const { return !static_cast<int>(_kind); }
+		inline bool operator== (const Type& type) const { return _equals(type); }
+		inline bool operator!= (const Type& type) const { return !_equals(type); }
 
-		virtual bool operator== (const Type& type) const = 0;
-		virtual bool operator!= (const Type& type) const = 0;
+		size_t arrayDimensions() const;
 
-		friend class InvalidType;
-		friend class ScalarType;
-		friend class PointerType;
-		friend class ArrayType;
-		friend class StructType;
+		Type pointer() const;
 
-		static const Type& Invalid;
+		Type array(const size_t element_count) const;
 
-		static const Type& Byte;
-		static const Type& Short;
-		static const Type& Integer;
-		static const Type& Long;
-		static const Type& UByte;
-		static const Type& UShort;
-		static const Type& UInteger;
-		static const Type& ULong;
-		static const Type& Boolean;
-		static const Type& Character;
+		static const Type Byte;
+		static const Type Short;
+		static const Type Integer;
+		static const Type Long;
+		static const Type UByte;
+		static const Type UShort;
+		static const Type UInteger;
+		static const Type ULong;
+		static const Type Boolean;
+		static const Type Character;
 
+		static Type invalid();
+
+		static Type pointerOf(const Type& base, const size_t depth);
+		static Type undefinedPointer();
+
+		static Type arrayOf(const Type& base, const std::vector<size_t>& elementsForDimension);
 	};
+
+
+	/*namespace
+	{
+		class AbstractType;
+		class InvalidType;
+		class ScalarType;
+		class PointerType;
+		class ArrayType;
+		class StructType;
+	}
 
 	namespace
 	{
-		class InvalidType : public Type
+		class AbstractType
+		{
+		private:
+			Typekind _kind;
+			size_t _size;
+
+			PointerType* _ptrForm;
+
+			AbstractType(const Typekind kind, const size_t size);
+			AbstractType(const AbstractType&) = delete;
+
+			AbstractType& operator= (const AbstractType&) = delete;
+
+		public:
+			struct Field
+			{
+				const AbstractType& type;
+				std::string identifier;
+			};
+
+			virtual ~AbstractType();
+
+			inline bool isInvalid() const { return !static_cast<int>(_kind); }
+
+			inline Typekind kind() const { return _kind; }
+			inline size_t size() const { return _size; }
+
+			const AbstractType& pointer();
+
+			virtual const AbstractType& componentType() const;
+
+			virtual size_t arrayElementCount() const;
+
+			inline operator bool() const { return static_cast<int>(_kind); }
+			inline bool operator! () const { return !static_cast<int>(_kind); }
+
+			virtual bool operator== (const AbstractType& type) const = 0;
+			virtual bool operator!= (const AbstractType& type) const = 0;
+
+			friend class InvalidType;
+			friend class ScalarType;
+			friend class PointerType;
+			friend class ArrayType;
+			friend class StructType;
+
+			static const AbstractType& Invalid;
+
+			static const AbstractType& Byte;
+			static const AbstractType& Short;
+			static const AbstractType& Integer;
+			static const AbstractType& Long;
+			static const AbstractType& UByte;
+			static const AbstractType& UShort;
+			static const AbstractType& UInteger;
+			static const AbstractType& ULong;
+			static const AbstractType& Boolean;
+			static const AbstractType& Character;
+
+		};
+
+		class InvalidType : public AbstractType
 		{
 		private:
 			InvalidType();
@@ -142,13 +261,13 @@ namespace ksp
 		public:
 			virtual ~InvalidType() = default;
 
-			bool operator== (const Type& type) const override;
-			bool operator!= (const Type& type) const override;
+			bool operator== (const AbstractType& type) const override;
+			bool operator!= (const AbstractType& type) const override;
 
-			friend class Type;
+			friend class AbstractType;
 		};
 
-		class ScalarType : public Type
+		class ScalarType : public AbstractType
 		{
 		private:
 			ScalarType(const Typekind kind, const size_t size);
@@ -165,49 +284,65 @@ namespace ksp
 			static const ScalarType Character;
 
 		public:
-			friend class Type;
+			friend class AbstractType;
 
 			virtual ~ScalarType() = default;
 
-			bool operator== (const Type& type) const override;
-			bool operator!= (const Type& type) const override;
+			bool operator== (const AbstractType& type) const override;
+			bool operator!= (const AbstractType& type) const override;
 		};
 
 
-		class PointerType : public Type
+		class PointerType : public AbstractType
 		{
 		private:
-			const Type& _componentType;
+			const AbstractType& _componentType;
 
-			PointerType(const Type& component_type);
+			PointerType(const AbstractType& component_type);
 
 		public:
-			friend class Type;
+			friend class AbstractType;
 
 			virtual ~PointerType();
 
-			const Type& componentType() const override;
+			const AbstractType& componentType() const override;
 
-			bool operator== (const Type& type) const override;
-			bool operator!= (const Type& type) const override;
+			bool operator== (const AbstractType& type) const override;
+			bool operator!= (const AbstractType& type) const override;
 		};
 
 
-		class ArrayType : public Type
+		class ArrayType : public AbstractType
 		{
 		private:
-			const Type& _componentType;
+			const AbstractType& _componentType;
 			const size_t _count;
 
-			ArrayType(const Type& component_type);
+			ArrayType(const AbstractType& component_type);
 
 		public:
-			friend class Type;
+			friend class AbstractType;
 
-			const Type& componentType() const override;
+			const AbstractType& componentType() const override;
 
-			bool operator== (const Type& type) const override;
-			bool operator!= (const Type& type) const override;
+			size_t arrayElementCount() const override;
+
+			bool operator== (const AbstractType& type) const override;
+			bool operator!= (const AbstractType& type) const override;
 		};
-	} 
+	}
+
+
+	class Type
+	{
+	private:
+		AbstractType* _type;
+
+		Type() : _type{ nullptr } {}
+
+	public:
+		inline Type(AbstractType* type) : _type{ type } {}
+		inline Type(AbstractType& type) : _type{ &type } {}
+		inline Type(const Type& type) : _type{ type._type }
+	};*/
 }

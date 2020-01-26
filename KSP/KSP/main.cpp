@@ -6,7 +6,11 @@
 
 int main(int argc, char** argv)
 {
-	ksp::KSP_State state;
+	ksp::Type t = ksp::Type::Integer;
+	ksp::Type pt = t.pointer();
+
+
+	/*ksp::KSP_State state;
 	ksp::KSP_Module mod;
 
 	std::cout << ksp::opcode::info::MOVB << std::endl;
@@ -21,7 +25,7 @@ int main(int argc, char** argv)
 	code.code = &raw_codes[0];
 	code.size = raw_codes.size();
 
-	ksp::execute(&state, &mod, code);
+	ksp::execute(&state, &mod, code);*/
 
 	return 0;
 }
