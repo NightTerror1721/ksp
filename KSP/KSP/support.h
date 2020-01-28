@@ -14,6 +14,80 @@ namespace ksp
 	typedef uint8_t opcode_t;
 	typedef opcode_t* bytecode_t;
 
+	namespace support
+	{
+		template<class _Ty>
+		class LinkedList
+		{
+		public:
+			using data_t = _Ty;
+			using data_ptr_t = _Ty*;
+			using data_ref_t = _Ty&;
+			using const_data_ptr_t = const _Ty*;
+			using const_data_ref_t = const _Ty&;
+
+		private:
+			struct Node
+			{
+				data_t data;
+				Node* next;
+				Node* prev;
+
+				Node(const_data_ref_t data, Node* next = nullptr, Node* prev = nullptr) :
+					data{ data },
+					next{ next },
+					prev{ prev }
+				{}
+			};
+
+		private:
+			Node* _head;
+			Node* _tail;
+			size_t _size;
+
+		public:
+			LinkedList() :
+				_head{ nullptr },
+				_tail{ nullptr },
+				_size{ 0 }
+			{}
+			LinkedList(size_t size, const_data_ref_t def_data) :
+				_head{ nullptr },
+				_tail{ nullptr },
+				_size{ size }
+			{
+				if (size > 0)
+				{
+					_head = _tail = new Node{ def_data };
+					for (--size; size > 0; --size)
+					{
+						Node* prev = _tail;
+						_tail = new Node{ def_data, nullptr, prev };
+						prev->next = _tail;
+					}
+				}
+			}
+			LinkedList(const LinkedList<data_t>& list) :
+				_head{ nullptr },
+				_tail{ nullptr },
+				_size{ list._size }
+			{
+				if (_size > 0)
+				{
+					_head = _tail = new Node{ list._head->data };
+					for (--size; size > 0; --size)
+					{
+						Node* prev = _tail;
+						_tail = new Node{ def_data, nullptr, prev };
+						prev->next = _tail;
+					}
+				}
+			}
+		};
+	}
+
+
+
 	enum class Typekind
 	{
 		Byte = 0x1,
