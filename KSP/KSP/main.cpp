@@ -3,12 +3,12 @@
 #include "runtime.h"
 #include "vm.h"
 #include "ops.h"
+#include "types.h"
 
 int main(int argc, char** argv)
 {
 	ksp::Type t = ksp::Type::Integer;
-	ksp::Type pt = t.pointer();
-
+	std::cout << t.size() << std::endl;
 
 	/*ksp::KSP_State state;
 	ksp::KSP_Module mod;
