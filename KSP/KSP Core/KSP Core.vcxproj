@@ -139,10 +139,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.c" />
+    <ClCompile Include="support\buffer.c" />
+    <ClCompile Include="support\error.c" />
     <ClCompile Include="support\map.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="support\buffer.h" />
     <ClInclude Include="support\ctypes.h" />
+    <ClInclude Include="support\error.h" />
     <ClInclude Include="support\map.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

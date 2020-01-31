@@ -20,12 +20,24 @@
     <ClCompile Include="support\map.c">
       <Filter>support</Filter>
     </ClCompile>
+    <ClCompile Include="support\buffer.c">
+      <Filter>support</Filter>
+    </ClCompile>
+    <ClCompile Include="support\error.c">
+      <Filter>support</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="support\map.h">
       <Filter>support</Filter>
     </ClInclude>
     <ClInclude Include="support\ctypes.h">
+      <Filter>support</Filter>
+    </ClInclude>
+    <ClInclude Include="support\buffer.h">
+      <Filter>support</Filter>
+    </ClInclude>
+    <ClInclude Include="support\error.h">
       <Filter>support</Filter>
     </ClInclude>
   </ItemGroup>
