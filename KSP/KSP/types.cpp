@@ -115,6 +115,18 @@ ksp::TypeInfo& ksp::TypeInfo::operator= (TypeInfo&& type) noexcept
 	return *this;
 }
 
+size_t ksp::TypeInfo::getExtraSizeRequired() const
+{
+	switch (_kind)
+	{
+		default:
+			return 0;
+
+		case TypeKind::Array:
+			return _size;
+	}
+}
+
 
 
 const ksp::TypeInfo ksp::TypeInfo::Invalid{};

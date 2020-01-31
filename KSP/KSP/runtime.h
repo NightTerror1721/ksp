@@ -10,7 +10,7 @@ namespace ksp
 	typedef stack_ptr_t* temp_ptr_t;
 
 	struct KSP_State;
-	struct KSP_Module;
+	struct Module;
 
 	namespace bytecode
 	{
@@ -57,5 +57,5 @@ namespace ksp
 
 
 
-	void execute(KSP_State* ksp_state, KSP_Module* module, const bytecode::RunnableBytecode& code);
+	void execute(KSP_State* ksp_state, Module* module, const bytecode::RunnableBytecode& code);
 }

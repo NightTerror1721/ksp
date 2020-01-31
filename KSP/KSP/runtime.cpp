@@ -133,7 +133,7 @@ void ksp::RuntimeState::push_call_info(const uint8_t register_count, const size_
 
 
 
-void ksp::execute(KSP_State* ksp_state, KSP_Module* module, const bytecode::RunnableBytecode& code)
+void ksp::execute(KSP_State* ksp_state, Module* module, const bytecode::RunnableBytecode& code)
 {
 	DECL_STACK;
 	PC_SET(code.code);

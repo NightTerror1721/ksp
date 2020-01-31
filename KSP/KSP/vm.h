@@ -12,133 +12,205 @@ namespace ksp
 {
 	namespace module_info
 	{
-		class AttemptToModifyABuiltElement : std::exception {};
+		class ConstantValue;
 
-		class Buildable
+		class NameTable
 		{
-		private:
-			bool _built;
-
 		public:
-			inline Buildable() : _built{ false } {};
-			~Buildable() = default;
-
-		protected:
-			inline bool built()
+			enum class Kind
 			{
-				if (!_built)
-					throw AttemptToModifyABuiltElement{};
-			}
+				Invalid,
+				Type,
+				Constant,
+				Function
+			};
 
-			inline bool nonbuilt()
+			class ElementAlreadyExists : std::exception
 			{
-				if (_built)
-					throw AttemptToModifyABuiltElement{};
-			}
+			public:
+				inline ElementAlreadyExists(const std::string& name) :
+					exception{ ("Trying to create a new element with an already exists name: " + name).c_str() }
+				{}
+				inline ElementAlreadyExists(const char* name) :
+					ElementAlreadyExists{ std::string{ name } }
+				{}
+			};
 
-			inline void build() { _built = true; }
+			class ElementNotFound : std::exception
+			{
+			public:
+				inline ElementNotFound(const std::string& name) :
+					exception{ ("Trying to get a element with name: " + name + ". But not found.").c_str() }
+				{}
+				inline ElementNotFound(const char* name) :
+					ElementNotFound{ std::string{ name } }
+				{}
+			};
+
+			class Element
+			{
+			private:
+				NameTable* _owner;
+				size_t _offset;
+				Kind _kind;
+				bool _extern;
+				void* _data;
+
+			public:
+				Element();
+				~Element();
+
+				inline const NameTable& owner() const { return *_owner; }
+				inline Kind kind() const { return _kind; }
+				inline bool isExtern() const { return _extern; }
+
+				inline Type getTypeMeta() const { return reinterpret_cast<TypeInfo*>(_data); }
+
+				Type createTypeInfo(const TypeInfo& type);
+				Type createTypeInfo(TypeInfo&& type);
+
+				const ConstantValue* createConstantValue(const Type& type);
+
+				//Function& createFunction()
+
+				void attachExternal(const Element& elem);
+
+			private:
+				inline void _reset() { Element::~Element(); }
+
+				friend class NameTable;
+			};
+
+		private:
+			std::map<std::string, Element> _elems;
+			std::vector<data_ptr_t> _refs;
+
+		public:
+			NameTable();
+			~NameTable();
+
+			Element& createNewElement(const std::string& name);
+
+			Element& getElement(const std::string& name);
+			const Element& getElement(const std::string& name) const;
+
+			void buildReferences();
+
+			inline bool hasName(const std::string& name) const { return _elems.find(name) != _elems.end(); }
+
+		public:
+			data_ptr_t* fastDataAccessor;
 		};
 
-		class TypePool
+		class ConstantValue
 		{
 		private:
-			std::map<std::string, TypeInfo> _types;
+			const Type		 _type;
+			data_ptr_t const _data;
 
 		public:
-			TypePool();
-			~TypePool();
+			ConstantValue(const Type& type);
+			~ConstantValue();
 
-			bool registerType(const std::string& name, const TypeInfo& type);
-			bool registerType(const std::string& name, TypeInfo&& type);
+			inline Type type() const { return _type; }
+			inline data_ptr_t data() const { return _data; }
 
-			bool hasType(const std::string& name) const;
-
-			Type getType(const std::string& name) const;
-
-			std::string getTypeName(const Type& type) const;
-		};
-
-
-		class NamesTable
-		{
-
+			friend class NameTable;
 		};
 
 
 
-		/*struct GlobalValue
+		class Function
 		{
-			Type type;
-			size_t offset{ 0 };
-			data_ptr_t ptr{ nullptr };
+		public:
+			class VariableInfo
+			{
+			private:
+				Type		_type;
+				std::string _name;
+				bool		_param;
 
-			static const GlobalValue Invalid;
-		};
+			public:
+				VariableInfo() = default;
+				VariableInfo(const Type& type, const std::string& name, const bool is_parameter);
+				~VariableInfo();
 
-		class ValuePool : private Buildable
-		{
+				inline Type type() const { return _type; }
+				inline const std::string& name() const { return _name; }
+				inline bool isParameter() const { return _param; }
+
+				friend class Function;
+			};
+
+			class ParameterOrVariableAlreadyExists : std::exception
+			{
+			public:
+				inline ParameterOrVariableAlreadyExists(const std::string& name) :
+					exception{ ("Trying to create a new Parameter with an already exists name: " + name).c_str() }
+				{}
+				inline ParameterOrVariableAlreadyExists(const char* name) :
+					ParameterOrVariableAlreadyExists{ std::string{ name } }
+				{}
+			};
+
 		private:
-			std::map<std::string, GlobalValue> _values;
-			data_block_t _data;
+			uint8_t _paramCount;
+			Type _returnType;
+			std::vector<VariableInfo> _vars;
+			std::vector<opcode_t> _code;
 
 		public:
-			ValuePool();
-			~ValuePool();
-
-			bool registerValue(const std::string& name, const Type& type);
-
-			bool hasValueName(const std::string& name) const;
-
-			const GlobalValue& getValue(const std::string& name) const;
-
-			data_ptr_t getValueAccessor(const std::string& name);
-			const_data_ptr_t getValueAccessor(const std::string& name) const;
-
-			void build();
-
-		public:
-			data_ptr_t fastDataAccessor;
-		};
-
-		struct FunctionParameter
-		{
-			Type type;
-			std::string name;
-		};
-
-		class Function : private Buildable
-		{
-		private:
-			std::string _name;
-			std::vector<FunctionParameter> _params;
-			Type _retType;
-			std::vector<data_ptr_t> _externs;
-			data_block_t _code;
-
-		public:
-			Function(const std::string& name, const Type& ret_type, const std::vector<FunctionParameter>& params);
+			Function();
 			~Function();
 
-			const std::string& name() const;
+			void setReturnType(const Type& type);
 
-			const std::vector<FunctionParameter>& parameters() const;
-
-			const Type& returnType() const;
-
-			void addExternElement(void* element_ptr);
+			void addOpcode(const opcode_t op);
+			void addOpcodes(const std::vector<opcode_t>& ops);
 
 			void build();
 
+
+			inline void addVariable(const Type& type, const std::string& name) { _insertVar(type, name, false); }
+			inline void addParameter(const Type& type, const std::string& name) { _insertVar(type, name, true); }
+
+			inline Type returnType() const { _returnType; }
+
+			inline size_t parameterCount() const { return _paramCount; }
+			inline const VariableInfo& parameter(const size_t index) const { return _vars[index]; }
+			inline const std::vector<VariableInfo>& parameters() const { return _vars; }
+
+			inline uint8_t variableCount() const { return static_cast<uint8_t>(_vars.size()); }
+			inline const VariableInfo& variable(const size_t index) const { return _vars[index]; }
+			inline const std::vector<VariableInfo>& variables() const { return _vars; }
+
+			inline size_t opcodeCount() const { return _code.size(); }
+			inline opcode_t opcode(const size_t index) const { return _code[index]; }
+			inline const std::vector<opcode_t>& opcodes() const { return _code; }
+
 		public:
-			data_ptr_t* fastExternAccessor;
-			data_ptr_t  fastCodeAccessor;
-		};*/
+			uint8_t fastRegisterCount;
+			uint8_t fastParameterCount;
+			bytecode_t fastCodeAccessor;
+			size_t fastExtraStackSize;
+
+		private:
+			void _insertVar(const Type& type, const std::string& name, bool is_param);
+		};
 	}
 
-	struct KSP_Module
+	struct Module
 	{
-		module_info::TypePool types;
-		//module_info::ValuePool constants;
+		module_info::NameTable content;
+
+		// Fast Accessors //
+		module_info::Function* fastFunctionAccessor;
+		data_ptr_t* fastConstantAccessor;
+
+		Module();
+		~Module();
+
+		void build();
 	};
 
 	struct KSP_State

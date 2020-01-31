@@ -1,118 +1,218 @@
 #include "vm.h"
 
 
-ksp::module_info::TypePool::TypePool() :
-	_types{}
+/* NAME TABLE */
+
+ksp::module_info::NameTable::Element::Element() :
+	_owner{ nullptr },
+	_offset{ 0 },
+	_kind{ Kind::Invalid },
+	_extern{ false },
+	_data{ nullptr }
 {}
-ksp::module_info::TypePool::~TypePool() {}
-
-bool ksp::module_info::TypePool::registerType(const std::string& name, const TypeInfo& type)
+ksp::module_info::NameTable::Element::~Element()
 {
-	if (hasType(name))
-		return false;
-	_types[name] = type;
-	return true;
-}
-bool ksp::module_info::TypePool::registerType(const std::string& name, TypeInfo&& type)
-{
-	if (hasType(name))
-		return false;
-	_types[name] = std::move(type);
-	return true;
-}
-
-bool ksp::module_info::TypePool::hasType(const std::string& name) const
-{
-	return _types.find(name) != _types.end();
+	if (_extern)
+	{
+		switch (_kind)
+		{
+		case Kind::Type:
+			delete reinterpret_cast<TypeInfo*>(_data);
+			break;
+		case Kind::Constant:
+			delete reinterpret_cast<ConstantValue*>(_data);
+			break;
+		case Kind::Function:
+			break;
+		}
+	}
 }
 
-ksp::Type ksp::module_info::TypePool::getType(const std::string& name) const
+ksp::Type ksp::module_info::NameTable::Element::createTypeInfo(const TypeInfo& type)
 {
-	const auto& it = _types.find(name);
-	return it != _types.end() ? it->second : ksp::TypeInfo::Invalid;
+	_reset();
+	_kind = Kind::Type;
+	_extern = false;
+	_data = new TypeInfo{ type };
+	return const_cast<const TypeInfo*>(reinterpret_cast<TypeInfo*>(_data));
+}
+ksp::Type ksp::module_info::NameTable::Element::createTypeInfo(TypeInfo&& type)
+{
+	_reset();
+	_kind = Kind::Type;
+	_extern = false;
+	_data = new TypeInfo{ std::move(type) };
+	return const_cast<const TypeInfo*>(reinterpret_cast<TypeInfo*>(_data));
 }
 
-std::string ksp::module_info::TypePool::getTypeName(const Type& type) const
+const ksp::module_info::ConstantValue* ksp::module_info::NameTable::Element::createConstantValue(const Type& type)
 {
-	for (const auto& pair : _types)
-		if (pair.second == type)
-			return pair.first;
-	return "";
+	_reset();
+	_kind = Kind::Constant;
+	_extern = false;
+	_data = new ConstantValue{ type };
+	return const_cast<const ConstantValue*>(reinterpret_cast<ConstantValue*>(_data));
+}
+
+void ksp::module_info::NameTable::Element::attachExternal(const Element& elem)
+{
+	_reset();
+	_owner = elem._owner;
+	_kind = elem._kind;
+	_extern = true;
+	_data = elem._data;
 }
 
 
-
-/*const ksp::module_info::GlobalValue ksp::module_info::GlobalValue::Invalid{};
-
-
-
-ksp::module_info::ValuePool::ValuePool() :
-	Buildable{},
-	_values{},
-	_data{},
+ksp::module_info::NameTable::NameTable() :
+	_elems{},
+	_refs{},
 	fastDataAccessor{ nullptr }
 {}
-ksp::module_info::ValuePool::~ValuePool() {}
+ksp::module_info::NameTable::~NameTable() {}
 
-bool ksp::module_info::ValuePool::registerValue(const std::string& name, const Type& type)
+ksp::module_info::NameTable::Element& ksp::module_info::NameTable::createNewElement(const std::string& name)
 {
-	nonbuilt();
-	if (hasValueName(name))
-		return false;
-	_values[name] = std::move(GlobalValue{ type, _data.size(), nullptr });
-	_data.resize(_data.size() + type.size(), static_cast<const char>(0));
-	return true;
+	auto it = _elems.try_emplace(name, Element{});
+	if(!it.second)
+		throw ElementAlreadyExists{ name };
+	it.first->second._owner = this;
+	return it.first->second;
 }
 
-bool ksp::module_info::ValuePool::hasValueName(const std::string& name) const
+ksp::module_info::NameTable::Element& ksp::module_info::NameTable::getElement(const std::string& name)
 {
-	return _values.find(name) != _values.end();
+	const auto& it = _elems.find(name);
+	if (it == _elems.end())
+		throw ElementNotFound{ name };
+	return it->second;
+}
+const ksp::module_info::NameTable::Element& ksp::module_info::NameTable::getElement(const std::string& name) const
+{
+	const auto& it = _elems.find(name);
+	if (it == _elems.end())
+		throw ElementNotFound{ name };
+	return it->second;
 }
 
-const ksp::module_info::GlobalValue& ksp::module_info::ValuePool::getValue(const std::string& name) const
+void ksp::module_info::NameTable::buildReferences()
 {
-	const auto& it = _values.find(name);
-	return it != _values.end() ? it->second : GlobalValue::Invalid;
-}
+	_refs.~vector();
+	INVOKE_CONSTRUCTOR(_refs, std::vector<data_ptr_t>);
+	_refs.reserve(_elems.size());
 
-ksp::data_ptr_t ksp::module_info::ValuePool::getValueAccessor(const std::string& name)
-{
-	const auto& it = _values.find(name);
-	if (it != _values.end())
+	size_t offCount = 0;
+	for (auto& p : _elems)
 	{
-		data_ptr_t ptr = it->second.ptr;
-		return ptr ? ptr : &_data[it->second.offset];
+		auto& e = p.second;
+		switch (e._kind)
+		{
+			case Kind::Constant:
+				e._offset = offCount++;
+				_refs.push_back(reinterpret_cast<ConstantValue*>(e._data)->_data);
+				break;
+		}
 	}
-	return nullptr;
-}
-ksp::const_data_ptr_t ksp::module_info::ValuePool::getValueAccessor(const std::string& name) const
-{
-	const auto& it = _values.find(name);
-	if (it != _values.end())
-	{
-		data_ptr_t ptr = it->second.ptr;
-		return ptr ? ptr : &_data[it->second.offset];
-	}
-	return nullptr;
+
+	fastDataAccessor = offCount > 0 ? &_refs[0] : nullptr;
 }
 
-void ksp::module_info::ValuePool::build()
+
+
+ksp::module_info::ConstantValue::ConstantValue(const Type& type) :
+	_type{ type },
+	_data{ new char[type.size()] }
+{}
+ksp::module_info::ConstantValue::~ConstantValue()
 {
-	nonbuilt();
-	Buildable::build();
-	if (_values.empty())
-	{
-		fastDataAccessor = nullptr;
-	}
-	else
-	{
-		fastDataAccessor = &_data[0];
-		for (auto& pair : _values)
-			pair.second.ptr = fastDataAccessor + pair.second.offset;
-	}
-}*/
+	delete[] _data;
+}
 
 
+
+ksp::module_info::Function::VariableInfo::VariableInfo(const Type& type, const std::string& name, const bool is_parameter) :
+	_type{ type },
+	_name{ name },
+	_param{ is_parameter }
+{}
+ksp::module_info::Function::VariableInfo::~VariableInfo() {}
+
+
+ksp::module_info::Function::Function() :
+	_paramCount{ 0 },
+	_returnType{},
+	_vars{},
+	_code{},
+	fastRegisterCount{ 0 },
+	fastParameterCount{ 0 },
+	fastExtraStackSize{ 0 },
+	fastCodeAccessor{ nullptr }
+{}
+ksp::module_info::Function::~Function() {}
+
+void ksp::module_info::Function::setReturnType(const Type& type)
+{
+	_returnType = type;
+}
+
+void ksp::module_info::Function::_insertVar(const Type& type, const std::string& name, bool is_param)
+{
+	auto it = std::find_if(_vars.begin(), _vars.end(), [&name](const VariableInfo& p) { return p._name == name; });
+	if (it != _vars.end())
+		throw ParameterOrVariableAlreadyExists{ name };
+
+	if (is_param && !_vars.empty())
+	{
+		it = std::find_if(_vars.begin(), _vars.end(), [](const VariableInfo& p) { return !p.isParameter(); });
+		if (it == _vars.end())
+			_vars.emplace_back(type, name, true);
+		else _vars.emplace(it, type, name, true);
+	}
+	else _vars.emplace_back(type, name, is_param);
+}
+
+void ksp::module_info::Function::addOpcode(const opcode_t op)
+{
+	_code.push_back(op);
+}
+void ksp::module_info::Function::addOpcodes(const std::vector<opcode_t>& ops)
+{
+	_code.reserve(_code.size() + ops.size());
+	_code.insert(_code.end(), ops.begin(), ops.end());
+}
+
+void ksp::module_info::Function::build()
+{
+	fastRegisterCount = static_cast<uint8_t>(_vars.size());
+	fastParameterCount = _paramCount;
+	fastCodeAccessor = _code.empty() ? nullptr : &_code[0];
+
+	size_t extra = 0;
+	for (const auto& v : _vars)
+		extra += v._type.getExtraSizeRequired();
+	fastExtraStackSize = extra;
+}
+
+
+
+
+
+
+
+
+/* MODULE */
+
+ksp::Module::Module() :
+	content{},
+	fastFunctionAccessor{ nullptr },
+	fastConstantAccessor{ nullptr }
+{}
+ksp::Module::~Module() {}
+
+void ksp::Module::build()
+{
+	content.buildReferences();
+}
 
 
 

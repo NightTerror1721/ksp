@@ -115,6 +115,8 @@ namespace ksp
 		TypeInfo& operator= (const TypeInfo& type);
 		TypeInfo& operator= (TypeInfo&& type) noexcept;
 
+		size_t getExtraSizeRequired() const;
+
 		inline TypeKind kind() const { return _kind; }
 		inline size_t size() const { return _size; }
 
@@ -223,6 +225,8 @@ namespace ksp
 
 		inline TypeKind kind() const { return _type->_kind; }
 		inline size_t size() const { return _type->_size; }
+
+		inline size_t getExtraSizeRequired() const { return _type->getExtraSizeRequired(); }
 
 		inline Type componentType() { return _type->_componentType; }
 
